@@ -99,20 +99,26 @@ class GamePadReader:
         print("-" * 60)
 
         try:
-            # Crosskey (byte 2)
-            crosskey_map = {
-                1: "Up", 
-                2: "Down", 
-                4: "Left", 
-                8: "Right",
-                9: "Up-Right",     # Added
-                6: "Down-Left",    # Added
-                3: "Up-Left", 
-                5: "Down-Right"    # Added
-            }
+            # Crosskey using bit masks (byte 2)
+            DPAD_UP = 0x01
+            DPAD_DOWN = 0x02
+            DPAD_LEFT = 0x04
+            DPAD_RIGHT = 0x08
+            
             crosskey_byte = data[2] & 0x0F  # Lower 4 bits
-            if crosskey_byte in crosskey_map:
-                print(f"Crosskey: {crosskey_map[crosskey_byte]}")
+            crosskey_states = []
+            
+            if crosskey_byte & DPAD_UP:
+                crosskey_states.append("Up")
+            if crosskey_byte & DPAD_DOWN:
+                crosskey_states.append("Down")
+            if crosskey_byte & DPAD_LEFT:
+                crosskey_states.append("Left")
+            if crosskey_byte & DPAD_RIGHT:
+                crosskey_states.append("Right")
+                
+            if crosskey_states:
+                print(f"Crosskey: {'-'.join(crosskey_states)}")
 
             # Buttons (bytes 2 and 3)
             button_map_byte2 = {
@@ -141,33 +147,36 @@ class GamePadReader:
             print("Buttons pressed:", ", ".join(buttons_pressed) if buttons_pressed else "None")
 
             # Stick interpretation function
-            def interpret_stick_axis(low_byte, high_byte):
+            def interpret_stick_axis(high_byte, low_byte):
                 """
-                Interpret stick axis with specific range handling
-                - 0x0000 to 0x0080: Negative direction
-                - 0x0000 to 0xff7f: Positive direction
+                Interpret stick axis as signed 16-bit value (big-endian)
+                0x0000 (     0) =   0%
+                0x8000 ( 32768) = 100%
+                0x7FFF (-32767) = -100%
                 """
+                # Combine bytes in big-endian order
                 value = (high_byte << 8) | low_byte
                 
-                # Negative direction (left/down)
-                if value <= 0x0080:
-                    return -((0x0080 - value) / 0x0080) * 100
+                # Convert to 16-bit signed integer
+                if value > 32767:  # Convert to negative if high bit is set
+                    value -= 65536
                 
-                # Positive direction (right/up)
-                elif value >= 0xff7f:
-                    return ((value - 0xff7f) / 0x0080) * 100
-                
-                # Neutral position
-                return 0
+                # Convert to percentage
+                if value == 0:
+                    return 0
+                elif value > 0:
+                    return (value / 32768) * 100
+                else:
+                    return (value / 32767) * 100
 
-            # Left Stick
-            left_stick_x = interpret_stick_axis(data[6], data[7])
-            left_stick_y = interpret_stick_axis(data[8], data[9])
+            # Left Stick (switch byte order)
+            left_stick_x = interpret_stick_axis(data[7], data[6])
+            left_stick_y = interpret_stick_axis(data[9], data[8])
             print(f"Left Stick: X: {left_stick_x:6.1f}% | Y: {left_stick_y:6.1f}%")
 
-            # Right Stick  
-            right_stick_x = interpret_stick_axis(data[10], data[11])
-            right_stick_y = interpret_stick_axis(data[12], data[13])
+            # Right Stick (switch byte order)
+            right_stick_x = interpret_stick_axis(data[11], data[10])
+            right_stick_y = interpret_stick_axis(data[13], data[12])
             print(f"Right Stick: X: {right_stick_x:6.1f}% | Y: {right_stick_y:6.1f}%")
 
             # Triggers
